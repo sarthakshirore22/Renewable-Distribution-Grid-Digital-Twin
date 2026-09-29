@@ -30,16 +30,16 @@ def get_scenarios():
 @app.post("/simulate/{scenario_id}")
 def simulate_scenario(scenario_id: str, force: bool = False):
     try:
-        # Performance optimization: if analysis report already exists, serve it instantly from cache
-        # UNLESS the user requests a fresh run (force=True) to generate realistic varied data.
         report_path = f"reports/results_{scenario_id}.json"
         if not force and os.path.exists(report_path):
             with open(report_path, "r") as f:
                 report = json.load(f)
-            return {"status": "success", "scenario_id": scenario_id, "report": report, "cached": True}
+            bill = compute_bill(scenario_id)
+            return {"status": "success", "scenario_id": scenario_id, "report": report, "bill": bill, "cached": True}
             
         report = run_scenario(scenario_id, force_randomize=force)
-        return {"status": "success", "scenario_id": scenario_id, "report": report, "cached": False}
+        bill = compute_bill(scenario_id)
+        return {"status": "success", "scenario_id": scenario_id, "report": report, "bill": bill, "cached": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

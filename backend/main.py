@@ -42,46 +42,42 @@ def run_scenario(scenario_id: str, force_randomize: bool = False):
     twin_net = build_net(cfg)
     orchestrator = DigitalTwinOrchestrator(twin_net, cfg)
     
-    # Pre-generate environmental profiles
+    # Pre-generate environmental profiles (ONCE, not per-step)
     shapes = get_normalized_load_shapes()
     weather = generate_irradiance(cfg.weather_location['lat'], cfg.weather_location['lon'], "2025-06-22")
     poa = weather['poa'].values
     pv_pu = poa / 1000.0
     pv_pu[pv_pu > 1.0] = 1.0
     
-    # Introduce stochastic noise if requested (simulating real-world conditions)
+    # Introduce stochastic noise if requested (real-world conditions)
     if force_randomize:
-        noise = np.random.normal(1.0, 0.08, len(pv_pu)) # +/- 8% noise
+        noise = np.random.normal(1.0, 0.08, len(pv_pu))
         pv_pu = np.clip(pv_pu * noise, 0.0, 1.0)
-        # Randomize load shapes slightly too
         for key in shapes:
             shapes[key] = shapes[key] * np.random.normal(1.0, 0.05, len(shapes[key]))
     
     # State tracking
-    thermal_state = {'transformer_temp': 25.0} # Assume ambient start
+    thermal_state = {'transformer_temp': 25.0}
     action_log = []
     plant_severity_sum = 0.0
     
     # ---------------------------------------------------------
-    # MASSIVE PERFORMANCE BOOST:
-    # Instead of running 96 steps (every 15 mins), run 24 steps (hourly).
-    # This reduces calculation time by 75%, making the UI return in seconds instead of minutes.
+    # PERFORMANCE: Run 12 steps (every 2 hours) instead of 96.
+    # Only invoke the heavy orchestrator when the grid is actually stressed.
+    # This brings Render execution from 150s down to ~15-30s.
     # ---------------------------------------------------------
-    steps = 24
+    steps = 12
     stride = 96 // steps
     
-    print(f"Running scenario {scenario_id} for {steps} steps (Hourly)...")
+    print(f"Running scenario {scenario_id} for {steps} steps...")
     
     for t in range(steps):
         idx = t * stride
         
-        # --- A. Step Plant ---
-        # Apply Weather/Load to Plant
-        # PV
+        # --- A. Step Plant: Apply Weather/Load ---
         pv_capacity_kw = cfg.pv_size_kw / len(plant_net.bus)
         plant_net.sgen.p_mw = pv_pu[idx] * (pv_capacity_kw / 1000.0)
         
-        # Load
         for i, load_idx in enumerate(plant_net.load.index):
             ltype = plant_net.load.type.at[load_idx] if 'type' in plant_net.load else 'Residential'
             shape = shapes.get(ltype, shapes['Residential'])[idx]
@@ -91,51 +87,51 @@ def run_scenario(scenario_id: str, force_randomize: bool = False):
                 plant_net.load['base_p_mw'] = plant_net.load.p_mw
             plant_net.load.p_mw.at[load_idx] = plant_net.load.base_p_mw.at[load_idx] * scaled
             
-        # Run Plant Power Flow
+        # --- B. Run Plant Power Flow & Check Limits ---
+        step_severity = 0.0
         try:
             pp.runpp(plant_net, numba=False)
             res = check_limits(plant_net, cfg, thermal_state)
-            plant_severity_sum += res['severity']
+            step_severity = res['severity']
+            plant_severity_sum += step_severity
             
-            # Thermal update
             if not plant_net.trafo.empty:
                 load_pu = plant_net.res_trafo.loading_percent.at[0] / 100.0
                 temp = compute_hotspot(25.0, load_pu, thermal_state)
                 thermal_state['transformer_temp'] = temp
         except Exception as e:
-            # Plant collapsed
             print(f"Plant collapsed at step {t}: {e}")
             plant_severity_sum += 1000.0
             
-        # --- B. Generate Telemetry ---
+        # --- C. Generate Telemetry ---
         today_str = datetime.utcnow().strftime('%Y-%m-%d')
         hr = int(idx * 15 // 60)
         mn = int((idx * 15) % 60)
         time_str = f"{today_str}T{hr:02d}:{mn:02d}:00Z"
         telemetry = generate_telemetry(plant_net, cfg, step=idx, current_time_str=time_str)
         
-        # --- C. Step Twin ---
-        twin_result = orchestrator.tick(telemetry, step=idx)
+        # --- D. SMART Twin: Only invoke orchestrator when grid is actually stressed ---
+        # This is the single biggest speedup. The orchestrator's state estimation +
+        # search loop with deepcopy is extremely expensive. When severity is 0
+        # (grid is healthy), we skip it entirely and save ~4 seconds per step.
+        action = None
+        if step_severity > 0.01:
+            twin_result = orchestrator.tick(telemetry, step=idx)
+            action = twin_result.get('recommended_action')
         
-        # --- D. Closed Loop Action ---
-        action = twin_result.get('recommended_action')
+        # --- E. Apply Closed Loop Action ---
         if action:
-            # Apply to Plant
             action.apply(plant_net, {})
-            # Also apply to Twin's belief
             action.apply(orchestrator.net, {})
-            
             action_log.append({
-                'step': hr, # Show hour in the UI
+                'step': hr,
                 'action': action.__class__.__name__,
                 'time': time_str
             })
             
-    # Calculate execution time
     exec_time = time.time() - start_time
     print(f"Finished in {exec_time:.2f} seconds. Severity: {plant_severity_sum:.2f}")
     
-    # Output report
     report = {
         'scenario_id': scenario_id,
         'execution_time_seconds': exec_time,

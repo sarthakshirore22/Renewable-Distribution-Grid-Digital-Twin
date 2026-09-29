@@ -32,19 +32,21 @@ function App() {
     setReport(null)
     setBill(null)
     
-    // Add ?force=true to regenerate realistic noisy data each time
     axios.post(`${API_BASE_URL}/simulate/${selectedScenario}?force=true`)
       .then(res => {
-        return axios.get(`${API_BASE_URL}/results/${selectedScenario}`)
-      })
-      .then(res => {
+        // Use the report and bill directly from the simulate response
+        // This eliminates the second API call and fixes the "analysis not found" error
         setReport(res.data.report)
         setBill(res.data.bill)
         setLoading(false)
       })
       .catch(err => {
         console.error(err)
-        setError('Analysis failed or report not found.')
+        if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+          setError('The analysis is taking longer than expected. Please try "Load Latest Report" in a moment.')
+        } else {
+          setError('Analysis failed. Please check your connection and try again.')
+        }
         setLoading(false)
       })
   }
