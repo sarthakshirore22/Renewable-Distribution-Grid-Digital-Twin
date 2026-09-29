@@ -4,7 +4,6 @@ import os
 import json
 
 from twin.finances.bill import compute_bill
-# We will import run_scenario from main
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import run_scenario

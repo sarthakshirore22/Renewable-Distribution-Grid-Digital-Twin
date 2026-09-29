@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+from datetime import datetime
 import pandapower as pp
 import numpy as np
 
@@ -19,7 +20,6 @@ import warnings
 warnings.filterwarnings("ignore")
 
 def load_scenario(scenario_id: str) -> ScenarioConfig:
-    import os
     path = f"configs/{scenario_id}.yaml"
     if os.path.exists(path):
         with open(path, "r") as f:
@@ -62,33 +62,31 @@ def run_scenario(scenario_id: str, force_randomize: bool = False):
     action_log = []
     plant_severity_sum = 0.0
     
-    steps = 96
+    # ---------------------------------------------------------
+    # MASSIVE PERFORMANCE BOOST:
+    # Instead of running 96 steps (every 15 mins), run 24 steps (hourly).
+    # This reduces calculation time by 75%, making the UI return in seconds instead of minutes.
+    # ---------------------------------------------------------
+    steps = 24
+    stride = 96 // steps
     
-    print(f"Running scenario {scenario_id} for {steps} steps...")
+    print(f"Running scenario {scenario_id} for {steps} steps (Hourly)...")
     
     for t in range(steps):
+        idx = t * stride
+        
         # --- A. Step Plant ---
         # Apply Weather/Load to Plant
         # PV
-        for i, sgen_idx in enumerate(plant_net.sgen.index):
-            # We scale using capacity instead
-            continue
-            
-        # Proper way to set profiles without destroying capacity
-        # Since build_net sets max_p_mw or sn_mva?
-        # In case33bw, we just compute from cfg.pv_size_kw / len(bus)
         pv_capacity_kw = cfg.pv_size_kw / len(plant_net.bus)
-        plant_net.sgen.p_mw = pv_pu[t] * (pv_capacity_kw / 1000.0)
+        plant_net.sgen.p_mw = pv_pu[idx] * (pv_capacity_kw / 1000.0)
         
         # Load
         for i, load_idx in enumerate(plant_net.load.index):
             ltype = plant_net.load.type.at[load_idx] if 'type' in plant_net.load else 'Residential'
-            shape = shapes.get(ltype, shapes['Residential'])[t]
+            shape = shapes.get(ltype, shapes['Residential'])[idx]
             min_f = cfg.min_load_fraction
             scaled = min_f + shape * (1.0 - min_f)
-            # wait, need base load. We can store it in sn_mva.
-            # case33bw sets p_mw. We should read from original.
-            # Let's just assume we read from a stored 'base_p_mw' column.
             if 'base_p_mw' not in plant_net.load.columns:
                 plant_net.load['base_p_mw'] = plant_net.load.p_mw
             plant_net.load.p_mw.at[load_idx] = plant_net.load.base_p_mw.at[load_idx] * scaled
@@ -102,7 +100,6 @@ def run_scenario(scenario_id: str, force_randomize: bool = False):
             # Thermal update
             if not plant_net.trafo.empty:
                 load_pu = plant_net.res_trafo.loading_percent.at[0] / 100.0
-                # compute_hotspot(ambient_c, load_pu, state, dt_hours)
                 temp = compute_hotspot(25.0, load_pu, thermal_state)
                 thermal_state['transformer_temp'] = temp
         except Exception as e:
@@ -111,27 +108,25 @@ def run_scenario(scenario_id: str, force_randomize: bool = False):
             plant_severity_sum += 1000.0
             
         # --- B. Generate Telemetry ---
-        # Current time string
-        hr = int(t * 15 // 60)
-        mn = int((t * 15) % 60)
-        time_str = f"2025-06-22T{hr:02d}:{mn:02d}:00Z"
-        telemetry = generate_telemetry(plant_net, cfg, step=t, current_time_str=time_str)
+        today_str = datetime.utcnow().strftime('%Y-%m-%d')
+        hr = int(idx * 15 // 60)
+        mn = int((idx * 15) % 60)
+        time_str = f"{today_str}T{hr:02d}:{mn:02d}:00Z"
+        telemetry = generate_telemetry(plant_net, cfg, step=idx, current_time_str=time_str)
         
         # --- C. Step Twin ---
-        twin_result = orchestrator.tick(telemetry, step=t)
+        twin_result = orchestrator.tick(telemetry, step=idx)
         
         # --- D. Closed Loop Action ---
         action = twin_result.get('recommended_action')
         if action:
             # Apply to Plant
             action.apply(plant_net, {})
-            # Also apply to Twin's belief? Twin search already clones. 
-            # In a real closed loop, twin belief is updated by next cycle's measurements.
-            # But the twin's internal model needs the action applied so it knows it did it!
+            # Also apply to Twin's belief
             action.apply(orchestrator.net, {})
             
             action_log.append({
-                'step': t,
+                'step': hr, # Show hour in the UI
                 'action': action.__class__.__name__,
                 'time': time_str
             })

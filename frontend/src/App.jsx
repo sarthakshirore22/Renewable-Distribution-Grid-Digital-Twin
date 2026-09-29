@@ -93,6 +93,18 @@ function App() {
               <strong>Run New Simulation:</strong> Analyzes the grid with realistic real-time variations, simulating unique real-world conditions.
             </div>
           </div>
+          
+          <div className="financial-logic-section">
+            <h3>How are operating costs calculated?</h3>
+            <p>Our financial engine translates grid stress directly into monetary cost using real-world engineering standards:</p>
+            <ul>
+              <li><strong>Transformer Degradation:</strong> We calculate insulation loss using the <em>IEEE C57.91 standard</em>. Operating above 110°C Hot-Spot temperature exponentially accelerates asset aging, incurring heavy financial replacement penalties.</li>
+              <li><strong>PV Curtailment:</strong> Disconnecting solar farms wastes clean energy and violates grid contracts, incurring a steep <strong>$100.00</strong> penalty per instance.</li>
+              <li><strong>Battery Wear:</strong> Cycling lithium-ion grid storage degrades the cells. We assign a <strong>$10.00</strong> mechanical wear cost per dispatch.</li>
+              <li><strong>Tap Changes:</strong> Mechanical transformer tap changes cause physical wear and tear, costing <strong>$1.00</strong> per operation.</li>
+            </ul>
+            <p className="logic-summary">The Digital Twin's goal is to automatically select the intervention strategy that resolves grid violations for the absolute lowest financial cost.</p>
+          </div>
         </section>
 
         <section className="controls-panel">
@@ -188,7 +200,7 @@ function App() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Interval Step (15m)</th>
+                        <th>Hour</th>
                         <th>Timestamp</th>
                         <th>Intervention Type</th>
                       </tr>
@@ -196,7 +208,7 @@ function App() {
                     <tbody>
                       {report.action_log.map((act, i) => (
                         <tr key={i} className="table-row">
-                          <td className="step-cell">{act.step}</td>
+                          <td className="step-cell">{act.step}:00</td>
                           <td className="time-cell">{act.time}</td>
                           <td className="action-cell">
                             <span className={`action-badge ${act.action.toLowerCase()}`}>
@@ -217,6 +229,10 @@ function App() {
           </section>
         )}
       </main>
+
+      <footer className="app-footer">
+        <p>Renewable Distribution Grid Digital Twin &mdash; Powered by Pandapower AC Load Flow &amp; Newton-Raphson State Estimation</p>
+      </footer>
     </div>
   )
 }
