@@ -29,7 +29,7 @@ def load_scenario(scenario_id: str) -> ScenarioConfig:
         # Fallback to default
         return ScenarioConfig(scenario_id=scenario_id, pv_size_kw=1000)
 
-def run_scenario(scenario_id: str):
+def run_scenario(scenario_id: str, force_randomize: bool = False):
     start_time = time.time()
     
     # 1. Setup config
@@ -48,6 +48,14 @@ def run_scenario(scenario_id: str):
     poa = weather['poa'].values
     pv_pu = poa / 1000.0
     pv_pu[pv_pu > 1.0] = 1.0
+    
+    # Introduce stochastic noise if requested (simulating real-world conditions)
+    if force_randomize:
+        noise = np.random.normal(1.0, 0.08, len(pv_pu)) # +/- 8% noise
+        pv_pu = np.clip(pv_pu * noise, 0.0, 1.0)
+        # Randomize load shapes slightly too
+        for key in shapes:
+            shapes[key] = shapes[key] * np.random.normal(1.0, 0.05, len(shapes[key]))
     
     # State tracking
     thermal_state = {'transformer_temp': 25.0} # Assume ambient start

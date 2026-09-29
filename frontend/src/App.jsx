@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
 
-// Support Vercel deployment via environment variables, fallback to local development server
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 function App() {
@@ -33,7 +32,8 @@ function App() {
     setReport(null)
     setBill(null)
     
-    axios.post(`${API_BASE_URL}/simulate/${selectedScenario}`)
+    // Add ?force=true to regenerate realistic noisy data each time
+    axios.post(`${API_BASE_URL}/simulate/${selectedScenario}?force=true`)
       .then(res => {
         return axios.get(`${API_BASE_URL}/results/${selectedScenario}`)
       })
@@ -75,25 +75,47 @@ function App() {
       </header>
       
       <main className="app-main">
+        {/* Project Information Section */}
+        <section className="info-panel">
+          <h2>About This Digital Twin</h2>
+          <p>
+            This system is a sophisticated digital replica of a renewable distribution grid. 
+            It continuously forecasts power flow conditions based on solar irradiance and load data. 
+            When instability (like voltage spikes or thermal overloads) is predicted, the automated Orchestrator 
+            calculates and deploys the most cost-effective grid interventions (e.g., Battery Dispatch, Tap Changing) 
+            to restore safety in real-time.
+          </p>
+          <div className="info-actions">
+            <div className="info-item">
+              <strong>Load Latest Report:</strong> Instantly views the most recently cached grid state.
+            </div>
+            <div className="info-item">
+              <strong>Run New Simulation:</strong> Analyzes the grid with realistic real-time variations, simulating unique real-world conditions.
+            </div>
+          </div>
+        </section>
+
         <section className="controls-panel">
           <div className="control-group">
             <label htmlFor="scenario-select">Active Grid Scenario</label>
-            <select 
-              id="scenario-select"
-              value={selectedScenario} 
-              onChange={e => setSelectedScenario(e.target.value)}
-            >
-              {scenarios.map(s => (
-                <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>
-              ))}
-            </select>
+            <div className="select-wrapper">
+              <select 
+                id="scenario-select"
+                value={selectedScenario} 
+                onChange={e => setSelectedScenario(e.target.value)}
+              >
+                {scenarios.map(s => (
+                  <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="button-group">
             <button onClick={fetchReport} disabled={loading || !selectedScenario} className="btn-secondary">
               Load Latest Report
             </button>
             <button onClick={runAnalysis} disabled={loading || !selectedScenario} className="btn-primary">
-              {loading ? 'Evaluating Grid State...' : 'Execute Analysis'}
+              {loading ? 'Evaluating Grid State...' : 'Run New Simulation'}
             </button>
           </div>
           {error && <div className="error-banner">{error}</div>}
@@ -102,7 +124,7 @@ function App() {
         {loading && (
           <div className="loading-spinner">
             <div className="spinner"></div>
-            <p>Gathering telemetry and projecting grid state...</p>
+            <p>Gathering telemetry and projecting grid state with realistic conditions...</p>
           </div>
         )}
 
@@ -117,7 +139,7 @@ function App() {
                 <div className="summary-stats">
                   <div className="stat-item">
                     <span className="stat-label">Scenario ID</span>
-                    <span className="stat-value">{report.scenario_id}</span>
+                    <span className="stat-value">{report.scenario_id.replace(/_/g, ' ').toUpperCase()}</span>
                   </div>
                   <div className="stat-item">
                     <span className="stat-label">Evaluation Time</span>
@@ -165,7 +187,7 @@ function App() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Interval Step</th>
+                        <th>Interval Step (15m)</th>
                         <th>Timestamp</th>
                         <th>Intervention Type</th>
                       </tr>

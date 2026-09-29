@@ -407,3 +407,106 @@ button:disabled {
   border-radius: 8px;
   border: 1px dashed var(--border);
 }
+
+/* Info Panel */
+.info-panel {
+  background: linear-gradient(to right, #ffffff, #f8fafc);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+}
+
+.info-panel h2 {
+  margin-top: 0;
+  font-size: 1.5rem;
+  color: #1e1b4b;
+  margin-bottom: 1rem;
+}
+
+.info-panel p {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #334155;
+  margin-bottom: 1.5rem;
+}
+
+.info-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  background: #f1f5f9;
+  padding: 1.25rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.info-item {
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.info-item strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 0.25rem;
+}
+
+/* Fix dropdown arrow overlapping */
+.select-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+select {
+  padding-right: 2.5rem; /* Ensure text doesn't hide behind the arrow */
+  text-overflow: ellipsis;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .App {
+    padding: 1rem;
+  }
+  
+  .header-content h1 {
+    font-size: 2rem;
+  }
+  
+  .subtitle {
+    font-size: 1rem;
+  }
+  
+  .controls-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .button-group {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .button-group button {
+    width: 100%;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .summary-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .info-panel {
+    padding: 1.5rem;
+  }
+  
+  .bill-total-value {
+    font-size: 2.5rem;
+  }
+}
