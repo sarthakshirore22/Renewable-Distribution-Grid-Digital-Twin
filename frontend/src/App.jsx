@@ -4,6 +4,40 @@ import './App.css'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Human-readable names for intervention types
+const INTERVENTION_LABELS = {
+  'BatteryDispatchAction': 'Battery Dispatch',
+  'TapChangerAction': 'Transformer Tap Adjustment',
+  'CurtailPVAction': 'Solar Panel Curtailment',
+  'SwitchReconfigureAction': 'Network Reconfiguration'
+}
+
+const INTERVENTION_DESCRIPTIONS = {
+  'BatteryDispatchAction': 'Grid-scale battery was charged or discharged to balance load.',
+  'TapChangerAction': 'Transformer voltage tap was adjusted to regulate bus voltage.',
+  'CurtailPVAction': 'Solar generation was reduced to prevent overvoltage.',
+  'SwitchReconfigureAction': 'Power flow was rerouted through alternate feeders.'
+}
+
+// Format raw ISO timestamp into human-readable format
+function formatTimestamp(isoStr) {
+  if (!isoStr) return '—'
+  // "2026-09-29T04:00:00Z" → "Sep 29, 2026 — 04:00 AM"
+  try {
+    const d = new Date(isoStr)
+    const options = { year: 'numeric', month: 'short', day: 'numeric' }
+    const dateStr = d.toLocaleDateString('en-US', options)
+    const hours = d.getUTCHours()
+    const mins = d.getUTCMinutes()
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    const h12 = hours % 12 || 12
+    const timeStr = `${h12}:${String(mins).padStart(2, '0')} ${ampm}`
+    return `${dateStr} — ${timeStr}`
+  } catch {
+    return isoStr
+  }
+}
+
 function App() {
   const [scenarios, setScenarios] = useState([])
   const [selectedScenario, setSelectedScenario] = useState('')
@@ -11,18 +45,23 @@ function App() {
   const [report, setReport] = useState(null)
   const [bill, setBill] = useState(null)
   const [error, setError] = useState(null)
+  const [scenariosLoading, setScenariosLoading] = useState(true)
 
   useEffect(() => {
+    setScenariosLoading(true)
     axios.get(`${API_BASE_URL}/scenarios`)
       .then(res => {
-        setScenarios(res.data.scenarios)
-        if (res.data.scenarios.length > 0) {
-          setSelectedScenario(res.data.scenarios[0])
+        const sorted = [...res.data.scenarios].sort()
+        setScenarios(sorted)
+        if (sorted.length > 0) {
+          setSelectedScenario(sorted[0])
         }
+        setScenariosLoading(false)
       })
       .catch(err => {
         console.error(err)
         setError('Failed to connect to the backend server. Please ensure the Grid API is running.')
+        setScenariosLoading(false)
       })
   }, [])
 
@@ -34,8 +73,6 @@ function App() {
     
     axios.post(`${API_BASE_URL}/simulate/${selectedScenario}?force=true`)
       .then(res => {
-        // Use the report and bill directly from the simulate response
-        // This eliminates the second API call and fixes the "analysis not found" error
         setReport(res.data.report)
         setBill(res.data.bill)
         setLoading(false)
@@ -62,9 +99,18 @@ function App() {
       })
       .catch(err => {
         console.error(err)
-        setError('Report not found. You may need to execute the analysis first.')
+        setError('Report not found. You may need to run a new simulation first.')
         setLoading(false)
       })
+  }
+
+  // Format scenario ID for display: "s1_midday_overvoltage" → "S1 — Midday Overvoltage"
+  const formatScenarioName = (s) => {
+    if (!s) return ''
+    const parts = s.split('_')
+    const id = parts[0].toUpperCase()
+    const name = parts.slice(1).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    return name ? `${id} — ${name}` : id
   }
 
   return (
@@ -92,7 +138,7 @@ function App() {
               <strong>Load Latest Report:</strong> Instantly views the most recently cached grid state.
             </div>
             <div className="info-item">
-              <strong>Run New Simulation:</strong> Analyzes the grid with realistic real-time variations, simulating unique real-world conditions.
+              <strong>Run New Simulation:</strong> Analyzes the grid with realistic real-time variations, generating unique real-world conditions.
             </div>
           </div>
           
@@ -107,6 +153,15 @@ function App() {
             </ul>
             <p className="logic-summary">The Digital Twin's goal is to automatically select the intervention strategy that resolves grid violations for the absolute lowest financial cost.</p>
           </div>
+
+          <div className="glossary-section">
+            <h3>Key Terms</h3>
+            <ul>
+              <li><strong>System Stress Index:</strong> A unitless score (0 = perfect, higher = worse) that sums all voltage and thermal violations detected across the 24-hour evaluation period. A score of 0.00 means the grid operated within all safe limits.</li>
+              <li><strong>Automated Interventions:</strong> The total number of corrective actions the Digital Twin deployed to keep the grid safe.</li>
+              <li><strong>Evaluation Time:</strong> The real-world wall-clock time (in seconds) the physics engine took to complete all power flow calculations.</li>
+            </ul>
+          </div>
         </section>
 
         <section className="controls-panel">
@@ -117,18 +172,23 @@ function App() {
                 id="scenario-select"
                 value={selectedScenario} 
                 onChange={e => setSelectedScenario(e.target.value)}
+                disabled={scenariosLoading}
               >
-                {scenarios.map(s => (
-                  <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>
-                ))}
+                {scenariosLoading ? (
+                  <option>Loading scenarios...</option>
+                ) : (
+                  scenarios.map(s => (
+                    <option key={s} value={s}>{formatScenarioName(s)}</option>
+                  ))
+                )}
               </select>
             </div>
           </div>
           <div className="button-group">
-            <button onClick={fetchReport} disabled={loading || !selectedScenario} className="btn-secondary">
+            <button onClick={fetchReport} disabled={loading || !selectedScenario || scenariosLoading} className="btn-secondary">
               Load Latest Report
             </button>
-            <button onClick={runAnalysis} disabled={loading || !selectedScenario} className="btn-primary">
+            <button onClick={runAnalysis} disabled={loading || !selectedScenario || scenariosLoading} className="btn-primary">
               {loading ? 'Evaluating Grid State...' : 'Run New Simulation'}
             </button>
           </div>
@@ -138,8 +198,8 @@ function App() {
         {loading && (
           <div className="loading-spinner">
             <div className="spinner"></div>
-            <p>Gathering telemetry and projecting grid state with realistic conditions...</p>
-            <p className="loading-subtext"><strong>(This may take a moment to simulate)</strong></p>
+            <p>Running physics engine — analyzing power flow across all grid nodes...</p>
+            <p className="loading-subtext"><strong>(This may take up to 30 seconds)</strong></p>
           </div>
         )}
 
@@ -149,16 +209,16 @@ function App() {
               <div className="card summary-card">
                 <div className="card-header">
                   <h2>Operation Summary</h2>
-                  <span className="status-indicator success">Active</span>
+                  <span className="status-indicator success">Complete</span>
                 </div>
                 <div className="summary-stats">
                   <div className="stat-item">
-                    <span className="stat-label">Scenario ID</span>
-                    <span className="stat-value">{report.scenario_id.replace(/_/g, ' ').toUpperCase()}</span>
+                    <span className="stat-label">Scenario</span>
+                    <span className="stat-value">{formatScenarioName(report.scenario_id)}</span>
                   </div>
                   <div className="stat-item">
                     <span className="stat-label">Evaluation Time</span>
-                    <span className="stat-value">{report.execution_time_seconds.toFixed(2)}s</span>
+                    <span className="stat-value">{report.execution_time_seconds.toFixed(1)} sec</span>
                   </div>
                   <div className="stat-item">
                     <span className="stat-label">Automated Interventions</span>
@@ -176,7 +236,7 @@ function App() {
                   <h2>Financial Impact Assessment</h2>
                 </div>
                 <div className="bill-total-container">
-                  <span className="bill-total-label">Estimated Operating Cost</span>
+                  <span className="bill-total-label">Estimated Operating Cost (USD)</span>
                   <span className="bill-total-value">{bill.total_formatted}</span>
                 </div>
                 <div className="bill-breakdown">
@@ -195,35 +255,37 @@ function App() {
             
             <div className="card full-width-card action-log-card">
               <div className="card-header">
-                <h2>Automated Control Registry</h2>
+                <h2>Automated Control Log</h2>
               </div>
               <div className="table-container">
                 {report.action_log && report.action_log.length > 0 ? (
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Hour</th>
-                        <th>Timestamp</th>
-                        <th>Intervention Type</th>
+                        <th>Time of Day</th>
+                        <th>Date & Time</th>
+                        <th>Action Taken</th>
+                        <th>Description</th>
                       </tr>
                     </thead>
                     <tbody>
                       {report.action_log.map((act, i) => (
                         <tr key={i} className="table-row">
                           <td className="step-cell">{act.step}:00</td>
-                          <td className="time-cell">{act.time}</td>
+                          <td className="time-cell">{formatTimestamp(act.time)}</td>
                           <td className="action-cell">
-                            <span className={`action-badge ${act.action.toLowerCase()}`}>
-                              {act.action}
+                            <span className="action-badge">
+                              {INTERVENTION_LABELS[act.action] || act.action}
                             </span>
                           </td>
+                          <td className="desc-cell">{INTERVENTION_DESCRIPTIONS[act.action] || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 ) : (
                   <div className="empty-state">
-                    <p>Grid parameters optimal. No interventions required during this period.</p>
+                    <p>✅ Grid parameters optimal — no corrective interventions were required during this evaluation period.</p>
                   </div>
                 )}
               </div>

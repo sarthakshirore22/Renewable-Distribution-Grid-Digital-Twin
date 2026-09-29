@@ -22,7 +22,7 @@ app.add_middleware(
 def get_scenarios():
     scenarios = []
     if os.path.exists("configs"):
-        for f in os.listdir("configs"):
+        for f in sorted(os.listdir("configs")):
             if f.endswith(".yaml") and f != "defaults.yaml":
                 scenarios.append(f.replace(".yaml", ""))
     return {"scenarios": scenarios}

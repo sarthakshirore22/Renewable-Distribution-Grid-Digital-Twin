@@ -1,57 +1,135 @@
-# Digital Twin Grid Orchestrator
+# Renewable Distribution Grid — Digital Twin
 
-This project implements a high-performance Digital Twin for modern power grids, focusing on automated orchestration, limit enforcement (voltage and thermal), and action evaluation (curtailment, battery dispatch, tap changers, and reconfiguration). It features a Python/FastAPI backend and a React/Vite frontend.
+A real-time digital twin system that monitors, predicts, and autonomously controls a renewable-integrated power distribution grid.
+
+## What This Project Does
+
+Traditional power grids were designed for one-way electricity flow from large power plants to consumers. When we connect unpredictable renewable sources like solar panels, the grid faces dangerous instabilities — **voltage spikes** when solar output exceeds demand, and **thermal overloads** when transformers overheat during peak evening hours.
+
+This system solves that problem by creating a **digital replica** of the physical grid that:
+
+1. **Ingests real-time data** — solar irradiance, consumer load profiles, and grid sensor readings
+2. **Runs AC power flow physics** — using Newton-Raphson load flow analysis (via Pandapower) to simulate current, voltage, and temperature at every node
+3. **Predicts violations** — forecasts when voltage will exceed safe limits or when transformers will overheat
+4. **Autonomously deploys corrective actions** — selects the cheapest fix from a library of interventions (battery dispatch, tap changing, PV curtailment, network reconfiguration)
+5. **Generates a financial report** — calculates the total operating cost based on IEEE C57.91 transformer aging, curtailment penalties, and equipment wear
+
+## Live Demo
+
+- **Frontend (Vercel):** [Your Vercel URL]
+- **Backend API (Render):** [Your Render URL]
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React.js + Vite |
+| Backend API | Python 3.11 + FastAPI |
+| Physics Engine | Pandapower (Newton-Raphson AC Load Flow) |
+| State Estimation | Weighted Least Squares (WLS) |
+| Data Generation | NumPy (stochastic noise modeling) |
+| Hosting | Vercel (frontend) + Render (backend) |
 
 ## Project Structure
 
-- `backend/`: Contains the core digital twin simulation and FastAPI server.
-  - `api/`: FastAPI server endpoints (`server.py`).
-  - `configs/`: YAML configuration files defining scenarios and grid parameters.
-  - `reports/`: JSON cache of pre-calculated reports (for rapid UI rendering).
-  - `twin/`: The Digital Twin library (physics, orchestration, financials).
-  - `main.py`: Entry point for running simulations via CLI.
-  - `run_all.py`: Orchestrates and tests all scenarios.
-- `frontend/`: The React-based telemetry dashboard.
+```
+├── frontend/               # React website
+│   ├── src/
+│   │   ├── App.jsx          # Main dashboard UI
+│   │   └── App.css          # Styling and responsive layout
+│   ├── package.json
+│   └── vite.config.js
+│
+├── backend/                 # Python physics engine + API
+│   ├── api/
+│   │   └── server.py        # FastAPI endpoints
+│   ├── twin/
+│   │   ├── config.py        # Pydantic scenario configuration
+│   │   ├── orchestrator.py  # Digital Twin brain (estimation + forecast + search)
+│   │   ├── grid/
+│   │   │   ├── builder.py   # IEEE 33-bus network builder
+│   │   │   ├── limits.py    # Voltage & thermal limit checker
+│   │   │   └── topology.py  # Radial topology validator
+│   │   ├── control/
+│   │   │   ├── actions.py   # GridAction classes (Battery, Tap, PV, Switch)
+│   │   │   └── search.py    # Cost-ranked action search with deepcopy isolation
+│   │   ├── estimation/
+│   │   │   └── estimator.py # WLS state estimation (pandapower.estimation)
+│   │   ├── forecast/
+│   │   │   └── predictor.py # Load & PV forecaster with P10/P50/P90 bounds
+│   │   ├── thermal/
+│   │   │   └── transformer.py # IEEE C57.91 hot-spot temperature model
+│   │   ├── finances/
+│   │   │   └── bill.py      # Operating cost calculator
+│   │   ├── data/
+│   │   │   ├── profiles.py  # Normalized load shape curves
+│   │   │   └── weather.py   # Solar irradiance generator
+│   │   └── gateway/
+│   │       └── sensor.py    # Telemetry message generator with noise
+│   ├── configs/              # YAML scenario definitions
+│   ├── tests/                # 33 automated tests
+│   ├── main.py               # Simulation orchestration loop
+│   └── requirements.txt
+```
 
-## Local Setup & Deployment
+## How to Run Locally
 
-### 1. Backend (Python)
-The backend uses Python 3.11+. To run the backend locally:
-
+### Backend
 ```bash
 cd backend
 python -m venv venv
-# Activate venv:
-# Windows: venv\Scripts\activate
-# Mac/Linux: source venv/bin/activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Start the API server on port 8000
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
-### 2. Frontend (React/Vite)
-The frontend uses Node.js. 
-
+### Frontend
 ```bash
 cd frontend
 npm install
-
-# Start the development server (runs on port 5173)
 npm run dev
 ```
+Open `http://localhost:5173` in your browser.
 
-### Vercel Deployment
-To deploy the frontend to Vercel:
-1. Connect your GitHub repository to Vercel.
-2. Set the "Root Directory" in your Vercel project settings to `frontend`.
-3. Vercel will automatically run `npm install` and `npm run build`.
-4. *Important:* The Vercel frontend is configured to talk to the backend via the `VITE_API_URL` environment variable. By default, it expects the backend to be running on `http://localhost:8000` (which is perfect for a local examiner). If you deploy the Python backend to a cloud provider like Render or Heroku, add `VITE_API_URL=https://your-backend-url.com` in your Vercel Environment Variables.
+### Environment Variables
 
-## Architecture & Optimizations
-- **Physics Engine:** Uses `pandapower` (WLS state estimation) for robust AC load flow analysis.
-- **Performance:** Simulation bottlenecks are bypassed using an advanced pandas state-restoration cache that eliminates expensive full-grid deepcopies during the search loop.
-- **Instant UI Rendering:** The `api/server.py` implements a persistent cache layer (`reports/`). When the UI requests an analysis that has already been executed, the backend instantly streams the cached JSON report in milliseconds rather than re-computing the full timeline load flows.
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `VITE_API_URL` | Vercel (frontend) | Points to the Render backend URL |
+| `PYTHON_VERSION` | Render (backend) | Set to `3.11.0` |
 
-## Usage
-Select a scenario from the dropdown in the UI. Click **Execute Analysis** to see the system's financial repair bill, total violations, and automated resolutions over a 24-hour cycle.
+## Grid Scenarios
+
+| ID | Name | What It Tests |
+|----|------|--------------|
+| S1 | Midday Overvoltage | High solar + low load causes voltage spike |
+| S2 | Evening Thermal | Peak demand overheats transformers |
+| S3 | Cloud Transient | Rapid irradiance changes from passing clouds |
+| S4 | N-1 Outage | A major feeder line is disconnected |
+| S5 | Battery Depleted | Grid storage is fully exhausted |
+| S6 | Infeasible | No single action can resolve the violation |
+| S7 | Hidden Plant | Unregistered generation on the network |
+
+## Financial Model
+
+Every automated action has a real-world cost:
+
+| Intervention | Cost | Reasoning |
+|-------------|------|-----------|
+| Network Reconfiguration | $0 | Software-only feeder switching |
+| Transformer Tap Change | $1 | Mechanical wear on tap mechanism |
+| Battery Dispatch | $10 | Lithium-ion cell degradation per cycle |
+| PV Curtailment | $100 | Lost clean energy + contract penalties |
+
+Unresolved grid stress carries a penalty of **$1.50 per severity unit**, representing accelerated transformer aging per IEEE C57.91.
+
+## Tests
+
+```bash
+cd backend
+pytest      # Runs all 33 tests
+```
+
+## License
+
+This project was built for the Smart India Hackathon / academic competition.
