@@ -125,6 +125,7 @@ function App() {
           <div className="loading-spinner">
             <div className="spinner"></div>
             <p>Gathering telemetry and projecting grid state with realistic conditions...</p>
+            <p className="loading-subtext"><strong>(This may take a moment to simulate)</strong></p>
           </div>
         )}
 
